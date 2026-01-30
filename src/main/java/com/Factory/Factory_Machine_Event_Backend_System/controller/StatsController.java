@@ -1,6 +1,6 @@
-package com.antigravity.Factory_Machine_Event_Backend_System.controller;
+package com.Factory.Factory_Machine_Event_Backend_System.controller;
 
-import com.antigravity.Factory_Machine_Event_Backend_System.service.StatsService;
+import com.Factory.Factory_Machine_Event_Backend_System.service.StatsService;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

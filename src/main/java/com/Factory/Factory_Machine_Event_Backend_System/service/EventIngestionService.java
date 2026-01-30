@@ -1,8 +1,8 @@
-package com.antigravity.Factory_Machine_Event_Backend_System.service;
+package com.Factory.Factory_Machine_Event_Backend_System.service;
 
-import com.antigravity.Factory_Machine_Event_Backend_System.model.BatchIngestResponse;
-import com.antigravity.Factory_Machine_Event_Backend_System.model.MachineEvent;
-import com.antigravity.Factory_Machine_Event_Backend_System.repository.MachineEventRepository;
+import com.Factory.Factory_Machine_Event_Backend_System.model.BatchIngestResponse;
+import com.Factory.Factory_Machine_Event_Backend_System.model.MachineEvent;
+import com.Factory.Factory_Machine_Event_Backend_System.repository.MachineEventRepository;
 
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;

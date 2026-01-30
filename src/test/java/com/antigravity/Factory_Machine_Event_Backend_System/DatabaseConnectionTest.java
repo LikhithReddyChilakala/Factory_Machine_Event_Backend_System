@@ -1,13 +1,14 @@
 package com.antigravity.Factory_Machine_Event_Backend_System;
 
-import com.antigravity.machineevents.model.MachineEvent;
-import com.antigravity.machineevents.repository.MachineEventRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.Factory.machineevents.model.MachineEvent;
+import com.Factory.machineevents.repository.MachineEventRepository;
 
 import java.time.Instant;
 import java.util.UUID;

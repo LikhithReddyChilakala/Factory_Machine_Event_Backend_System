@@ -1,4 +1,4 @@
-package com.antigravity.Factory_Machine_Event_Backend_System;
+package com.Factory.Factory_Machine_Event_Backend_System;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

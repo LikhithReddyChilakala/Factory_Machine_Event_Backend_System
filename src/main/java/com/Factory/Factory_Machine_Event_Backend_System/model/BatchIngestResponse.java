@@ -1,4 +1,4 @@
-package com.antigravity.Factory_Machine_Event_Backend_System.model;
+package com.Factory.Factory_Machine_Event_Backend_System.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;

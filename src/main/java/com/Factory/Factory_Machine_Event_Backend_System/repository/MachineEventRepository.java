@@ -1,6 +1,6 @@
-package com.antigravity.Factory_Machine_Event_Backend_System.repository;
+package com.Factory.Factory_Machine_Event_Backend_System.repository;
 
-import com.antigravity.Factory_Machine_Event_Backend_System.model.MachineEvent;
+import com.Factory.Factory_Machine_Event_Backend_System.model.MachineEvent;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

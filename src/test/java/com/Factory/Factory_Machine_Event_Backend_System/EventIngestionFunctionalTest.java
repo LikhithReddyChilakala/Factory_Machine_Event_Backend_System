@@ -1,9 +1,9 @@
-package com.antigravity.Factory_Machine_Event_Backend_System;
+package com.Factory.Factory_Machine_Event_Backend_System;
 
-import com.antigravity.Factory_Machine_Event_Backend_System.model.BatchIngestResponse;
-import com.antigravity.Factory_Machine_Event_Backend_System.model.MachineEvent;
-import com.antigravity.Factory_Machine_Event_Backend_System.repository.MachineEventRepository;
-import com.antigravity.Factory_Machine_Event_Backend_System.service.EventIngestionService;
+import com.Factory.Factory_Machine_Event_Backend_System.model.BatchIngestResponse;
+import com.Factory.Factory_Machine_Event_Backend_System.model.MachineEvent;
+import com.Factory.Factory_Machine_Event_Backend_System.repository.MachineEventRepository;
+import com.Factory.Factory_Machine_Event_Backend_System.service.EventIngestionService;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
