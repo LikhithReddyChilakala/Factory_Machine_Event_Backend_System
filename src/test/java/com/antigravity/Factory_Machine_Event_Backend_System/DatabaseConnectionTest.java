@@ -1,4 +1,4 @@
-package com.antigravity.machineevents;
+package com.antigravity.Factory_Machine_Event_Backend_System;
 
 import com.antigravity.machineevents.model.MachineEvent;
 import com.antigravity.machineevents.repository.MachineEventRepository;
@@ -16,12 +16,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @TestPropertySource(properties = {
-    "spring.datasource.url=jdbc:mysql://localhost:3306/factory",
-    "spring.datasource.username=root",
-    "spring.datasource.password=Likhith@2003",
-    "spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver",
-    "spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect",
-    "spring.jpa.hibernate.ddl-auto=update"
+        "spring.datasource.url=jdbc:mysql://localhost:3306/factory",
+        "spring.datasource.username=root",
+        "spring.datasource.password=Likhith@2003",
+        "spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver",
+        "spring.jpa.database-platform=org.hibernate.dialect.MySQLDialect",
+        "spring.jpa.hibernate.ddl-auto=update"
 })
 class DatabaseConnectionTest {
 
@@ -50,7 +50,8 @@ class DatabaseConnectionTest {
         MachineEvent retrieved = repository.findById(testEventId).orElse(null);
         assertThat(retrieved).isNotNull();
         assertThat(retrieved.getMachineId()).isEqualTo("TEST-MACHINE-01");
-        
-        System.out.println(">>> SUCCESS: Successfully saved and retrieved event " + testEventId + " from the database.");
+
+        System.out
+                .println(">>> SUCCESS: Successfully saved and retrieved event " + testEventId + " from the database.");
     }
 }

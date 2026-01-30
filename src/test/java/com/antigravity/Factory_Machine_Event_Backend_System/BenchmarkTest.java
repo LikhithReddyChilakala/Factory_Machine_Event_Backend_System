@@ -1,8 +1,8 @@
-package com.antigravity.machineevents;
+package com.antigravity.Factory_Machine_Event_Backend_System;
 
-import com.antigravity.machineevents.model.BatchIngestResponse;
-import com.antigravity.machineevents.model.MachineEvent;
-import com.antigravity.machineevents.service.EventIngestionService;
+import com.antigravity.Factory_Machine_Event_Backend_System.model.BatchIngestResponse;
+import com.antigravity.Factory_Machine_Event_Backend_System.model.MachineEvent;
+import com.antigravity.Factory_Machine_Event_Backend_System.service.EventIngestionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
