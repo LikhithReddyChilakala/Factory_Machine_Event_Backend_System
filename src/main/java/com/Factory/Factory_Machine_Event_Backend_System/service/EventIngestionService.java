@@ -1,4 +1,5 @@
 package com.Factory.Factory_Machine_Event_Backend_System.service;
+
 import com.Factory.Factory_Machine_Event_Backend_System.model.BatchIngestResponse;
 import com.Factory.Factory_Machine_Event_Backend_System.model.MachineEvent;
 import com.Factory.Factory_Machine_Event_Backend_System.repository.MachineEventRepository;
@@ -14,16 +15,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+
 @Service
 public class EventIngestionService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(EventIngestionService.class);
     private final MachineEventRepository repository;
     private final EventIngestionService self; // Self-reference for AOP proxy
+
     public EventIngestionService(MachineEventRepository repository, @Lazy EventIngestionService self) {
         this.repository = repository;
         this.self = self;
     }
+
     private static final int MAX_RETRIES = 3;
+
     /**
      * Process a batch of events using Optimistic Batching with Fallback.
      */
@@ -39,9 +44,7 @@ public class EventIngestionService {
                 response.addRejection(event.getEventId(), rejectionReason);
                 continue;
             }
-            if (event.getReceivedTime() == null) {
-                event.setReceivedTime(now);
-            }
+            event.setReceivedTime(now);
             validEvents.add(event);
         }
         if (validEvents.isEmpty()) {
@@ -65,6 +68,7 @@ public class EventIngestionService {
         }
         return response;
     }
+
     private void processBatchOptimistic(List<MachineEvent> validEvents, BatchIngestResponse response) {
         // A. Pre-fetch all existing records in ONE query (O(1))
         List<String> eventIds = validEvents.stream()
@@ -114,11 +118,13 @@ public class EventIngestionService {
         response.setUpdated(response.getUpdated() + tempUpdated);
         response.setDeduped(response.getDeduped() + tempDeduped);
     }
+
     @Transactional
     public void saveBulkInternal(List<MachineEvent> batch) {
         repository.saveAll(batch);
         repository.flush(); // Force immediate execution to catch constraints/locking
     }
+
     private void processFallback(List<MachineEvent> validEvents, BatchIngestResponse response) {
         for (MachineEvent event : validEvents) {
             try {
@@ -129,6 +135,7 @@ public class EventIngestionService {
             }
         }
     }
+
     private String validateEvent(MachineEvent event, Instant now) {
         if (event.getEventId() == null || event.getEventId().trim().isEmpty()) {
             return "MISSING_EVENT_ID";
@@ -141,6 +148,7 @@ public class EventIngestionService {
         }
         return null;
     }
+
     private void processSingleEvent(MachineEvent incoming, BatchIngestResponse response) {
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
@@ -155,6 +163,7 @@ public class EventIngestionService {
             }
         }
     }
+
     // Public and @Transactional for AOP
     @Transactional
     public void attemptUpsert(MachineEvent incoming, BatchIngestResponse response) {
