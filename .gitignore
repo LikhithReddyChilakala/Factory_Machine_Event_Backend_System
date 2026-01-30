@@ -1,0 +1,16 @@
+# IDEs
+.idea/
+.vscode/
+
+# Build output
+target/
+
+# Local Maven
+apache-maven-*/
+maven.zip
+
+# Logs
+*.log
+
+# OS
+.DS_Store
