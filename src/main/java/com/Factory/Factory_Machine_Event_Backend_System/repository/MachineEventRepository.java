@@ -13,7 +13,8 @@ import java.util.List;
 public interface MachineEventRepository extends JpaRepository<MachineEvent, String> {
 
         @Query("SELECT e FROM MachineEvent e WHERE e.machineId = :machineId AND e.eventTime >= :start AND e.eventTime < :end")
-        List<MachineEvent> findByMachineIdAndtimeRange(@Param("machineId") String machineId,
+        List<MachineEvent> findByMachineIdAndTimeRange(
+                        @Param("machineId") String machineId,
                         @Param("start") Instant start,
                         @Param("end") Instant end);
 
@@ -24,7 +25,10 @@ public interface MachineEventRepository extends JpaRepository<MachineEvent, Stri
                         "WHERE e.eventTime >= :start AND e.eventTime < :end " +
                         "GROUP BY e.machineId " +
                         "ORDER BY SUM(CASE WHEN e.defectCount = -1 THEN 0 ELSE e.defectCount END) DESC")
-        List<Object[]> findTopDefectLines(@Param("start") Instant start,
+        List<DefectLineStats> findTopDefectLines(
+                        @Param("start") Instant start,
                         @Param("end") Instant end);
 
+        @Query("SELECT COALESCE(SUM(e.defectCount), 0) FROM MachineEvent e WHERE e.defectCount >= 0")
+        long sumKnownDefects();
 }

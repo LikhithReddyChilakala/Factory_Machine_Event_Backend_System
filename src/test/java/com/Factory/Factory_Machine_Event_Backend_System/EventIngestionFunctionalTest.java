@@ -151,4 +151,55 @@ public class EventIngestionFunctionalTest {
                 BatchIngestResponse response = ingestionService.processBatch(Collections.singletonList(event));
                 Assertions.assertEquals(1, response.getAccepted());
         }
+
+        // Helper methods for cleaner test syntax
+        private void ingest(MachineEvent event) {
+                ingestionService.processBatch(Collections.singletonList(event));
+        }
+
+        private MachineEvent event(String eventId, int defectCount) {
+                return MachineEvent.builder()
+                                .eventId(eventId)
+                                .machineId("M1")
+                                .eventTime(Instant.now())
+                                .receivedTime(Instant.now())
+                                .durationMs(100)
+                                .defectCount(defectCount)
+                                .build();
+        }
+
+        private MachineEvent eventAt(String isoTime) {
+                Instant time = Instant.parse(isoTime);
+                return MachineEvent.builder()
+                                .eventId("EVT-" + isoTime) // Unique ID based on time
+                                .machineId("M1")
+                                .eventTime(time)
+                                .receivedTime(Instant.now())
+                                .durationMs(100)
+                                .defectCount(0)
+                                .build();
+        }
+
+        @Test
+        public void defectCountMinusOneIsIgnoredInTotals() {
+                ingest(event("e1", -1));
+                ingest(event("e2", 4));
+
+                long total = repository.sumKnownDefects();
+
+                Assertions.assertEquals(4, total);
+        }
+
+        @Test
+        public void startInclusiveEndExclusiveWindow() {
+                ingest(eventAt("2024-01-01T10:00:00Z"));
+                ingest(eventAt("2024-01-01T11:00:00Z"));
+
+                List<MachineEvent> events = repository.findByMachineIdAndTimeRange(
+                                "M1",
+                                Instant.parse("2024-01-01T10:00:00Z"),
+                                Instant.parse("2024-01-01T11:00:00Z"));
+
+                Assertions.assertEquals(1, events.size());
+        }
 }

@@ -1,6 +1,7 @@
 package com.Factory.Factory_Machine_Event_Backend_System.service;
 
 import com.Factory.Factory_Machine_Event_Backend_System.model.MachineEvent;
+import com.Factory.Factory_Machine_Event_Backend_System.repository.DefectLineStats;
 import com.Factory.Factory_Machine_Event_Backend_System.repository.MachineEventRepository;
 
 import org.springframework.stereotype.Service;
@@ -24,7 +25,7 @@ public class StatsService {
     }
 
     public MachineStats getMachineStats(String machineId, Instant start, Instant end) {
-        List<MachineEvent> events = repository.findByMachineIdAndtimeRange(machineId, start, end);
+        List<MachineEvent> events = repository.findByMachineIdAndTimeRange(machineId, start, end);
 
         long totalEvents = events.size();
         long totalDefects = events.stream()
@@ -45,15 +46,15 @@ public class StatsService {
     }
 
     public List<TopDefectLine> getTopDefectLines(Instant start, Instant end, int limit) {
-        // Query returns Object[]: {machineId, totalDefects, eventCount}
-        List<Object[]> results = repository.findTopDefectLines(start, end);
+        // Query returns List<DefectLineStats>
+        List<DefectLineStats> results = repository.findTopDefectLines(start, end);
 
         List<TopDefectLine> lines = new ArrayList<>();
         for (int i = 0; i < Math.min(results.size(), limit); i++) {
-            Object[] row = results.get(i);
-            String lineId = (String) row[0];
-            long totalDefects = ((Number) row[1]).longValue();
-            long eventCount = ((Number) row[2]).longValue();
+            DefectLineStats row = results.get(i);
+            String lineId = row.getLineId();
+            long totalDefects = row.getTotalDefects();
+            long eventCount = row.getEventCount();
 
             double defectPercent = eventCount == 0 ? 0 : (double) totalDefects * 100.0 / eventCount;
             BigDecimal roundedPercent = BigDecimal.valueOf(defectPercent).setScale(2, RoundingMode.HALF_UP);
