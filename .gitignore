@@ -11,6 +11,12 @@ maven.zip
 
 # Logs
 *.log
+*.txt
+build_debug.log
+
+# Agent
+.gemini/
+.agent/
 
 # OS
 .DS_Store

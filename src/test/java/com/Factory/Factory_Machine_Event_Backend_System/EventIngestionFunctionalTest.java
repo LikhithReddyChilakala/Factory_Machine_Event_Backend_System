@@ -37,13 +37,13 @@ public class EventIngestionFunctionalTest {
         public void testIdenticalDuplicateDeduplication() {
                 String eventId = "DUP-001";
                 MachineEvent event1 = MachineEvent.builder()
-                                .eventId(eventId).machineId("M1")
+                                .eventId(eventId).machineId("M1").factoryId("F1")
                                 .eventTime(Instant.now()).receivedTime(Instant.now())
                                 .durationMs(100).defectCount(5).build();
 
                 // Use same timestamp/payload for exact duplicate
                 MachineEvent event2 = MachineEvent.builder()
-                                .eventId(eventId).machineId("M1")
+                                .eventId(eventId).machineId("M1").factoryId("F1")
                                 .eventTime(event1.getEventTime()).receivedTime(event1.getReceivedTime())
                                 .durationMs(100).defectCount(5).build();
 
@@ -62,14 +62,14 @@ public class EventIngestionFunctionalTest {
                 Instant now = Instant.now();
 
                 MachineEvent oldEvent = MachineEvent.builder()
-                                .eventId(eventId).machineId("M1")
+                                .eventId(eventId).machineId("M1").factoryId("F1")
                                 .eventTime(now).receivedTime(now.minusSeconds(10))
                                 .durationMs(100).defectCount(1).build();
 
                 ingestionService.processBatch(Collections.singletonList(oldEvent));
 
                 MachineEvent newEvent = MachineEvent.builder()
-                                .eventId(eventId).machineId("M1")
+                                .eventId(eventId).machineId("M1").factoryId("F1")
                                 .eventTime(now).receivedTime(now) // Newer
                                 .durationMs(200).defectCount(5) // Different payload
                                 .build();
@@ -89,14 +89,14 @@ public class EventIngestionFunctionalTest {
                 Instant now = Instant.now();
 
                 MachineEvent newerEvent = MachineEvent.builder()
-                                .eventId(eventId).machineId("M1")
+                                .eventId(eventId).machineId("M1").factoryId("F1")
                                 .eventTime(now).receivedTime(now)
                                 .durationMs(100).defectCount(5).build();
 
                 ingestionService.processBatch(Collections.singletonList(newerEvent));
 
                 MachineEvent olderEvent = MachineEvent.builder()
-                                .eventId(eventId).machineId("M1")
+                                .eventId(eventId).machineId("M1").factoryId("F1")
                                 .eventTime(now).receivedTime(now.minusSeconds(20)) // Older
                                 .durationMs(200).defectCount(99) // Different
                                 .build();
@@ -113,7 +113,7 @@ public class EventIngestionFunctionalTest {
         @Test
         public void testInvalidDurationRejected() {
                 MachineEvent event = MachineEvent.builder()
-                                .eventId("BAD-DUR").machineId("M1")
+                                .eventId("BAD-DUR").machineId("M1").factoryId("F1")
                                 .eventTime(Instant.now()).receivedTime(Instant.now())
                                 .durationMs(-1).defectCount(0).build();
 
@@ -127,7 +127,7 @@ public class EventIngestionFunctionalTest {
         @Test
         public void testFutureEventRejected() {
                 MachineEvent event = MachineEvent.builder()
-                                .eventId("FUTURE").machineId("M1")
+                                .eventId("FUTURE").machineId("M1").factoryId("F1")
                                 .eventTime(Instant.now().plus(Duration.ofHours(1))) // > 15 min buffer
                                 .receivedTime(Instant.now())
                                 .durationMs(100).defectCount(0).build();
@@ -144,7 +144,7 @@ public class EventIngestionFunctionalTest {
         @Test
         public void testUnknownDefectCountAccepted() {
                 MachineEvent event = MachineEvent.builder()
-                                .eventId("UNKNOWN-DEFECT").machineId("M1")
+                                .eventId("UNKNOWN-DEFECT").machineId("M1").factoryId("F1")
                                 .eventTime(Instant.now()).receivedTime(Instant.now())
                                 .durationMs(100).defectCount(-1).build();
 
@@ -161,6 +161,7 @@ public class EventIngestionFunctionalTest {
                 return MachineEvent.builder()
                                 .eventId(eventId)
                                 .machineId("M1")
+                                .factoryId("F1")
                                 .eventTime(Instant.now())
                                 .receivedTime(Instant.now())
                                 .durationMs(100)
@@ -173,6 +174,7 @@ public class EventIngestionFunctionalTest {
                 return MachineEvent.builder()
                                 .eventId("EVT-" + isoTime) // Unique ID based on time
                                 .machineId("M1")
+                                .factoryId("F1")
                                 .eventTime(time)
                                 .receivedTime(Instant.now())
                                 .durationMs(100)
@@ -201,5 +203,37 @@ public class EventIngestionFunctionalTest {
                                 Instant.parse("2024-01-01T11:00:00Z"));
 
                 Assertions.assertEquals(1, events.size());
+        }
+
+        @Test
+        public void testBatchRequestedLevelDeduplication() {
+                String eventId = "BATCH-DEDUP-001";
+                Instant now = Instant.now();
+
+                // 1. Oldest (should be deduped)
+                MachineEvent e1 = MachineEvent.builder()
+                                .eventId(eventId).machineId("M1").factoryId("F1")
+                                .eventTime(now).receivedTime(now.minusSeconds(10))
+                                .durationMs(100).defectCount(1).build();
+
+                // 2. Newest (should be accepted)
+                MachineEvent e2 = MachineEvent.builder()
+                                .eventId(eventId).machineId("M1").factoryId("F1")
+                                .eventTime(now).receivedTime(now)
+                                .durationMs(200).defectCount(5).build();
+
+                // 3. Middle (should be deduped)
+                MachineEvent e3 = MachineEvent.builder()
+                                .eventId(eventId).machineId("M1").factoryId("F1")
+                                .eventTime(now).receivedTime(now.minusSeconds(5))
+                                .durationMs(150).defectCount(3).build();
+
+                // Mix them up in the batch
+                ingestionService.processBatch(List.of(e1, e2, e3));
+
+                // Verify DB has the "winner" (e2)
+                MachineEvent stored = repository.findById(eventId).orElseThrow();
+                Assertions.assertEquals(5, stored.getDefectCount());
+                Assertions.assertEquals(200, stored.getDurationMs());
         }
 }

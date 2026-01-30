@@ -36,6 +36,7 @@ class DatabaseConnectionTest {
                 MachineEvent event = MachineEvent.builder()
                                 .eventId(testEventId)
                                 .machineId("TEST-MACHINE-01")
+                                .factoryId("F1")
                                 .eventTime(Instant.now())
                                 .receivedTime(Instant.now())
                                 .durationMs(100)

@@ -5,12 +5,12 @@ import com.Factory.Factory_Machine_Event_Backend_System.model.MachineEvent;
 import com.Factory.Factory_Machine_Event_Backend_System.repository.MachineEventRepository;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 public class EventIngestionService {
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(EventIngestionService.class);
     private final MachineEventRepository repository;
-    private final EventIngestionService self; // Self-reference for AOP proxy
+    private final EventIngestionService self;
 
     public EventIngestionService(MachineEventRepository repository, @Lazy EventIngestionService self) {
         this.repository = repository;
@@ -29,172 +29,165 @@ public class EventIngestionService {
 
     private static final int MAX_RETRIES = 3;
 
-    /**
-     * Process a batch of events using Optimistic Batching with Fallback.
-     */
     public BatchIngestResponse processBatch(List<MachineEvent> events) {
         BatchIngestResponse response = new BatchIngestResponse();
         Instant now = Instant.now();
         List<MachineEvent> validEvents = new ArrayList<>();
-        // 1. VALIDATION PHASE
-        // Separate validation so we don't re-validate in fallback
+
+        // 1. Validation & Defaulting
         for (MachineEvent event : events) {
-            String rejectionReason = validateEvent(event, now);
-            if (rejectionReason != null) {
-                response.addRejection(event.getEventId(), rejectionReason);
+            String error = validateEvent(event, now);
+            if (error != null) {
+                response.addRejection(event.getEventId(), error);
                 continue;
             }
-            event.setReceivedTime(now);
+            if (event.getReceivedTime() == null)
+                event.setReceivedTime(now);
             validEvents.add(event);
         }
-        if (validEvents.isEmpty()) {
+        if (validEvents.isEmpty())
             return response;
-        }
-        // 2. FAST PATH: OPTIMISTIC BATCH PROCESSING
-        try {
-            processBatchOptimistic(validEvents, response);
-        } catch (Exception e) {
-            // 3. SLOW PATH: FALLBACK
-            // If ANY event caused a concurrency error, the whole batch rolled back.
-            // Switch to processing one-by-one to isolate and handle the conflict.
-            log.warn("Optimistic batch save failed. Falling back to row-by-row processing. Error: {}", e.getMessage());
 
-            // Reset counters (since the batch failed)
-            // Rejections are preserved as they were statically determined
+        // 2. Request-Level Deduplication (Latest receivedTime wins)
+        Map<String, MachineEvent> uniqueMap = new HashMap<>();
+        for (MachineEvent e : validEvents) {
+            MachineEvent existing = uniqueMap.get(e.getEventId());
+            if (existing == null || e.getReceivedTime().isAfter(existing.getReceivedTime())) {
+                if (existing != null)
+                    response.setDeduped(response.getDeduped() + 1);
+                uniqueMap.put(e.getEventId(), e);
+            } else {
+                response.setDeduped(response.getDeduped() + 1);
+            }
+        }
+        List<MachineEvent> dedupedEvents = new ArrayList<>(uniqueMap.values());
+
+        // 3. Fast Path: Optimistic Batch Processing
+        try {
+            processBatchOptimistic(dedupedEvents, response);
+        } catch (Exception e) {
+            log.warn("Optimistic batch failed, falling back to row-by-row: {}", e.getMessage());
             response.setAccepted(0);
             response.setUpdated(0);
-            response.setDeduped(0);
-            processFallback(validEvents, response);
+            response.setDeduped(0); // Reset stats for fallback re-calculation
+            processFallback(dedupedEvents, response);
         }
         return response;
     }
 
-    private void processBatchOptimistic(List<MachineEvent> validEvents, BatchIngestResponse response) {
-        // A. Pre-fetch all existing records in ONE query (O(1))
-        List<String> eventIds = validEvents.stream()
+    private void processBatchOptimistic(List<MachineEvent> batch, BatchIngestResponse response) {
+        // Pre-fetch existing records in O(1) query
+        List<String> ids = batch.stream()
                 .map(MachineEvent::getEventId)
                 .collect(Collectors.toList());
-        Map<String, MachineEvent> existingMap = repository.findAllById(eventIds).stream()
-                .collect(Collectors.toMap(MachineEvent::getEventId, e -> e));
-        List<MachineEvent> batchToSave = new ArrayList<>();
 
-        // Temp counters
-        int tempAccepted = 0;
-        int tempUpdated = 0;
-        int tempDeduped = 0;
-        // B. In-Memory Logic
-        for (MachineEvent incoming : validEvents) {
-            MachineEvent existing = existingMap.get(incoming.getEventId());
-            if (existing == null) {
-                // New Event
-                batchToSave.add(incoming);
-                tempAccepted++;
-            } else {
-                // Existing Event
-                if (incoming.getReceivedTime().isAfter(existing.getReceivedTime())) {
-                    if (incoming.hasSamePayload(existing)) {
-                        tempDeduped++;
-                    } else {
-                        // Update relevant fields
-                        existing.setDurationMs(incoming.getDurationMs());
-                        existing.setDefectCount(incoming.getDefectCount());
-                        existing.setEventTime(incoming.getEventTime());
-                        existing.setReceivedTime(incoming.getReceivedTime());
+        // Pre-fetch existing records in O(1) query
+        Map<String, MachineEvent> dbMap = repository.findAllById(ids)
+                .stream().collect(Collectors.toMap(MachineEvent::getEventId, e -> e));
 
-                        batchToSave.add(existing);
-                        tempUpdated++;
-                    }
+        List<MachineEvent> toSave = new ArrayList<>();
+        int acc = 0, upd = 0, ded = 0;
+
+        for (MachineEvent in : batch) {
+            MachineEvent ex = dbMap.get(in.getEventId());
+            if (ex == null) {
+                toSave.add(in);
+                acc++; // New Event
+            } else if (in.getReceivedTime().isAfter(ex.getReceivedTime())) {
+                if (in.hasSamePayload(ex)) {
+                    ded++; // Duplicate payload
                 } else {
-                    tempDeduped++;
+                    // Update field-by-field to keep managed entity state
+                    ex.setDurationMs(in.getDurationMs());
+                    ex.setDefectCount(in.getDefectCount());
+                    ex.setEventTime(in.getEventTime());
+                    ex.setReceivedTime(in.getReceivedTime());
+                    ex.setMachineId(in.getMachineId());
+                    ex.setFactoryId(in.getFactoryId());
+                    toSave.add(ex);
+                    upd++;
                 }
+            } else {
+                ded++; // Older update ignored
             }
         }
-        // C. Bulk Write (O(1))
-        if (!batchToSave.isEmpty()) {
-            self.saveBulkInternal(batchToSave);
-        }
-        // Only update response if successful
-        response.setAccepted(response.getAccepted() + tempAccepted);
-        response.setUpdated(response.getUpdated() + tempUpdated);
-        response.setDeduped(response.getDeduped() + tempDeduped);
+
+        if (!toSave.isEmpty())
+            self.saveBulkInternal(toSave);
+        response.setAccepted(response.getAccepted() + acc);
+        response.setUpdated(response.getUpdated() + upd);
+        response.setDeduped(response.getDeduped() + ded);
     }
 
     @Transactional
     public void saveBulkInternal(List<MachineEvent> batch) {
         repository.saveAll(batch);
-        repository.flush(); // Force immediate execution to catch constraints/locking
+        repository.flush();
     }
 
-    private void processFallback(List<MachineEvent> validEvents, BatchIngestResponse response) {
-        for (MachineEvent event : validEvents) {
+    private void processFallback(List<MachineEvent> events, BatchIngestResponse response) {
+        for (MachineEvent event : events) {
             try {
                 processSingleEvent(event, response);
             } catch (Exception e) {
-                log.error("Unexpected error processing event {} in fallback", event.getEventId(), e);
+                log.error("Error processing event {} in fallback", event.getEventId(), e);
                 response.addRejection(event.getEventId(), "INTERNAL_ERROR");
             }
         }
     }
 
-    private String validateEvent(MachineEvent event, Instant now) {
-        if (event.getEventId() == null || event.getEventId().trim().isEmpty()) {
+    private String validateEvent(MachineEvent e, Instant now) {
+        if (e.getEventId() == null || e.getEventId().trim().isEmpty())
             return "MISSING_EVENT_ID";
-        }
-        if (event.getDurationMs() < 0 || event.getDurationMs() > Duration.ofHours(6).toMillis()) {
+        if (e.getDurationMs() < 0 || e.getDurationMs() > Duration.ofHours(6).toMillis())
             return "INVALID_DURATION";
-        }
-        if (event.getEventTime().isAfter(now.plus(Duration.ofMinutes(15)))) {
+        if (e.getEventTime().isAfter(now.plus(Duration.ofMinutes(15))))
             return "EVENT_IN_FUTURE";
-        }
         return null;
     }
 
-    private void processSingleEvent(MachineEvent incoming, BatchIngestResponse response) {
-        for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    private void processSingleEvent(MachineEvent in, BatchIngestResponse res) {
+        for (int i = 1; i <= MAX_RETRIES; i++) {
             try {
-                self.attemptUpsert(incoming, response);
+                self.attemptUpsert(in, res);
                 return;
             } catch (Exception e) {
-                if (attempt == MAX_RETRIES) {
-                    response.addRejection(
-                            incoming.getEventId(),
-                            "CONCURRENCY_FAILURE");
-                }
+                if (i == MAX_RETRIES)
+                    res.addRejection(in.getEventId(), "CONCURRENCY_FAILURE");
             }
         }
     }
 
-    // Public and @Transactional for AOP
     @Transactional
-    public void attemptUpsert(MachineEvent incoming, BatchIngestResponse response) {
-        if (incoming.getEventId() == null) {
-            throw new IllegalArgumentException("Event ID cannot be null");
-        }
+    public void attemptUpsert(MachineEvent in, BatchIngestResponse res) {
+        if (in.getEventId() == null)
+            throw new IllegalArgumentException("Event ID null");
 
-        Optional<MachineEvent> existingOpt = repository.findById(incoming.getEventId());
-        if (existingOpt.isEmpty()) {
+        Optional<MachineEvent> opt = repository.findById(in.getEventId());
+        if (opt.isEmpty()) {
             try {
-                repository.saveAndFlush(incoming);
-                response.setAccepted(response.getAccepted() + 1);
+                repository.saveAndFlush(in);
+                res.setAccepted(res.getAccepted() + 1);
             } catch (DataIntegrityViolationException e) {
-                throw e;
+                throw e; // Retry signal
             }
         } else {
-            MachineEvent existing = existingOpt.get();
-            if (incoming.getReceivedTime().isAfter(existing.getReceivedTime())) {
-                if (incoming.hasSamePayload(existing)) {
-                    response.setDeduped(response.getDeduped() + 1);
+            MachineEvent ex = opt.get();
+            if (in.getReceivedTime().isAfter(ex.getReceivedTime())) {
+                if (in.hasSamePayload(ex)) {
+                    res.setDeduped(res.getDeduped() + 1);
                 } else {
-                    existing.setDurationMs(incoming.getDurationMs());
-                    existing.setDefectCount(incoming.getDefectCount());
-                    existing.setEventTime(incoming.getEventTime());
-                    existing.setMachineId(incoming.getMachineId());
-                    existing.setReceivedTime(incoming.getReceivedTime());
-                    repository.saveAndFlush(existing);
-                    response.setUpdated(response.getUpdated() + 1);
+                    ex.setDurationMs(in.getDurationMs());
+                    ex.setDefectCount(in.getDefectCount());
+                    ex.setEventTime(in.getEventTime());
+                    ex.setMachineId(in.getMachineId());
+                    ex.setFactoryId(in.getFactoryId());
+                    ex.setReceivedTime(in.getReceivedTime());
+                    repository.saveAndFlush(ex);
+                    res.setUpdated(res.getUpdated() + 1);
                 }
             } else {
-                response.setDeduped(response.getDeduped() + 1);
+                res.setDeduped(res.getDeduped() + 1);
             }
         }
     }
