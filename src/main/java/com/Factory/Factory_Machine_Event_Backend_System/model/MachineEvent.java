@@ -51,7 +51,6 @@ public class MachineEvent {
         return this.durationMs == other.durationMs &&
                 this.defectCount == other.defectCount &&
                 Objects.equals(this.eventTime, other.eventTime) &&
-                Objects.equals(this.machineId, other.machineId) &&
-                Objects.equals(this.factoryId, other.factoryId);
+                Objects.equals(this.machineId, other.machineId);
     }
 }

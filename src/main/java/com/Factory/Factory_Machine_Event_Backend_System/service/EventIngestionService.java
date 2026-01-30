@@ -43,6 +43,8 @@ public class EventIngestionService {
             }
             if (event.getReceivedTime() == null)
                 event.setReceivedTime(now);
+            if (event.getFactoryId() == null || event.getFactoryId().trim().isEmpty())
+                event.setFactoryId("DEFAULT");
             validEvents.add(event);
         }
         if (validEvents.isEmpty())

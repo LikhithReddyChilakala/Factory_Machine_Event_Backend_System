@@ -236,4 +236,43 @@ public class EventIngestionFunctionalTest {
                 Assertions.assertEquals(5, stored.getDefectCount());
                 Assertions.assertEquals(200, stored.getDurationMs());
         }
+
+        @Test
+        public void testFactoryIdDefaulting() {
+                MachineEvent event = MachineEvent.builder()
+                                .eventId("NO-FACTORY").machineId("M1") // factoryId not set
+                                .eventTime(Instant.now()).receivedTime(Instant.now())
+                                .durationMs(100).defectCount(0).build();
+
+                ingestionService.processBatch(Collections.singletonList(event));
+
+                MachineEvent stored = repository.findById("NO-FACTORY").orElseThrow();
+                Assertions.assertEquals("DEFAULT", stored.getFactoryId());
+        }
+
+        @Test
+        public void testFactoryIdIgnoredInPayloadComparison() {
+                String eventId = "FACTORY-IGNORE-001";
+                Instant now = Instant.now();
+
+                MachineEvent event1 = MachineEvent.builder()
+                                .eventId(eventId).machineId("M1").factoryId("F1")
+                                .eventTime(now).receivedTime(now)
+                                .durationMs(100).defectCount(5).build();
+
+                ingestionService.processBatch(Collections.singletonList(event1));
+
+                // Same payload, different factoryId, newer receivedTime
+                MachineEvent event2 = MachineEvent.builder()
+                                .eventId(eventId).machineId("M1").factoryId("F2")
+                                .eventTime(now).receivedTime(now.plusSeconds(1))
+                                .durationMs(100).defectCount(5).build();
+
+                BatchIngestResponse response = ingestionService.processBatch(Collections.singletonList(event2));
+
+                // Should be deduped because the payload (duration, defects, etc.) is the same,
+                // factoryId is ignored
+                Assertions.assertEquals(1, response.getDeduped());
+                Assertions.assertEquals(0, response.getUpdated());
+        }
 }
